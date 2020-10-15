@@ -36,6 +36,8 @@ from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
 
+import kqat
+
 try:
     from apex import amp
     from apex.parallel import DistributedDataParallel as ApexDDP
@@ -267,6 +269,10 @@ parser.add_argument('--use-multi-epochs-loader', action='store_true', default=Fa
 parser.add_argument('--torchscript', dest='torchscript', action='store_true',
                     help='convert model torchscript for inference')
 
+# kqat part
+parser.add_argument('--qat', action='store_true', default=False)
+parser.add_argument('--bitwidth', type=int, default=8)
+parser.add_argument('--pot', action='store_true', default=False)
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -365,6 +371,12 @@ def main():
     model.cuda()
     if args.channels_last:
         model = model.to(memory_format=torch.channels_last)
+
+    if args.qat:
+        # fuse model is currently model dependent
+        kqat.fuse_model(model, inplace=True)
+        attach_qconfig(args, model)
+        kqat.quant_model(model, inplace=True)
 
     # setup synchronized BatchNorm for distributed training
     if args.distributed and args.sync_bn:

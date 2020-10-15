@@ -38,25 +38,27 @@ def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
 
 
 def create_optimizer(args, model, filter_bias_and_bn=True):
-    opt_lower = args.opt.lower()
     weight_decay = args.weight_decay
     if weight_decay and filter_bias_and_bn:
         skip = {}
         if hasattr(model, 'no_weight_decay'):
             skip = model.no_weight_decay
         parameters = add_weight_decay(model, weight_decay, skip)
-        weight_decay = 0.
     else:
         parameters = model.parameters()
 
-    if 'fused' in opt_lower:
-        assert has_apex and torch.cuda.is_available(), 'APEX and CUDA required for fused optimizers'
+    return create_optimizer_param(args, parameters)
 
-    opt_args = dict(lr=args.lr, weight_decay=weight_decay)
+def create_optimizer_param(args, parameters):
+    opt_args = dict(lr=args.lr, weight_decay=args.weight_decay)
     if hasattr(args, 'opt_eps') and args.opt_eps is not None:
         opt_args['eps'] = args.opt_eps
     if hasattr(args, 'opt_betas') and args.opt_betas is not None:
         opt_args['betas'] = args.opt_betas
+
+    opt_lower = args.opt.lower()
+    if 'fused' in opt_lower:
+        assert has_apex and torch.cuda.is_available(), 'APEX and CUDA required for fused optimizers'
 
     opt_split = opt_lower.split('_')
     opt_lower = opt_split[-1]

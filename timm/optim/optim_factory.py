@@ -22,19 +22,23 @@ except ImportError:
     has_apex = False
 
 
-def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
+def add_weight_decay(model, weight_decay=1e-5, skip_list=(), rcf_name='alpha'):
     decay = []
     no_decay = []
+    rcf = []
     for name, param in model.named_parameters():
+        if rcf_name in name:
+            rcf.append(param)
+            continue
         if not param.requires_grad:
             continue  # frozen weights
         if len(param.shape) == 1 or name.endswith(".bias") or name in skip_list:
             no_decay.append(param)
         else:
             decay.append(param)
-    return [
-        {'params': no_decay, 'weight_decay': 0.},
-        {'params': decay, 'weight_decay': weight_decay}]
+    return ([{'params': no_decay, 'weight_decay': 0.},
+             {'params': decay, 'weight_decay': weight_decay}],
+            [{'params': rcf, 'weight_decay': 0.}])
 
 
 def create_optimizer(args, model, filter_bias_and_bn=True):
@@ -48,6 +52,19 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
         parameters = model.parameters()
 
     return create_optimizer_param(args, parameters)
+
+
+def create_optimizer_rcf(args, model, rcf_name='alpha'):
+    weight_decay = args.weight_decay
+    if not weight_decay:
+        weight_decay = 0.
+    skip = {}
+    if hasattr(model, 'no_weight_decay'):
+        skip = model.no_weight_decay
+    parameters, parameters_rcf = add_weight_decay(model, weight_decay, skip, rcf_name=rcf_name)
+
+    return create_optimizer_param(args, parameters), optim.Adam(parameters_rcf, lr=args.lr_rcf)
+
 
 def create_optimizer_param(args, parameters):
     opt_args = dict(lr=args.lr, weight_decay=args.weight_decay)

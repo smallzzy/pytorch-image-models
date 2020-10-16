@@ -32,7 +32,7 @@ from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCo
 from timm.models import create_model, resume_checkpoint, convert_splitbn_model
 from timm.utils import *
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCrossEntropy
-from timm.optim import create_optimizer
+from timm.optim import create_optimizer, create_optimizer_rcf
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
 
@@ -112,12 +112,13 @@ parser.add_argument('--clip-grad', type=float, default=None, metavar='NORM',
                     help='Clip gradient norm (default: None, no clipping)')
 
 
-
 # Learning rate schedule parameters
 parser.add_argument('--sched', default='step', type=str, metavar='SCHEDULER',
                     help='LR scheduler (default: "step"')
 parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                     help='learning rate (default: 0.01)')
+parser.add_argument('--lr-rcf', type=float, default=0.01, metavar='LR',
+                    help='threshold learning rate (default: 0.01)')
 parser.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct',
                     help='learning rate noise on/off epoch percentages')
 parser.add_argument('--lr-noise-pct', type=float, default=0.67, metavar='PERCENT',
@@ -146,6 +147,8 @@ parser.add_argument('--patience-epochs', type=int, default=10, metavar='N',
                     help='patience epochs for Plateau LR scheduler (default: 10')
 parser.add_argument('--decay-rate', '--dr', type=float, default=0.1, metavar='RATE',
                     help='LR decay rate (default: 0.1)')
+parser.add_argument('--decay-rate-rcf', '--drc', type=float, default=0.5, metavar='RATE',
+                    help='threshold LR decay rate (default: 0.1)')
 
 # Augmentation & regularization parameters
 parser.add_argument('--no-aug', action='store_true', default=False,
@@ -375,7 +378,11 @@ def main():
         if args.channels_last:
             model = model.to(memory_format=torch.channels_last)
 
-    optimizer = create_optimizer(args, model)
+    if args.qat:
+        optimizer, optimizer_rcf = create_optimizer_rcf(args, model)
+    else:
+        optimizer = create_optimizer(args, model)
+        optimizer_rcf = None
 
     amp_autocast = suppress  # do nothing
     loss_scaler = None
@@ -438,6 +445,13 @@ def main():
         # NOTE: EMA model does not need to be wrapped by DDP
 
     lr_scheduler, num_epochs = create_scheduler(args, optimizer)
+
+    if args.qat:
+        import copy
+        args_rcf = copy.deepcopy(args)
+        args_rcf.decay_rate = args.decay_rate_rcf
+        lr_scheduler_rcf, _ = create_scheduler(args_rcf, optimizer_rcf)
+
     start_epoch = 0
     if args.start_epoch is not None:
         # a specified start_epoch will always override the resume epoch
@@ -446,6 +460,8 @@ def main():
         start_epoch = resume_epoch
     if lr_scheduler is not None and start_epoch > 0:
         lr_scheduler.step(start_epoch)
+        if args.qat:
+            lr_scheduler_rcf.step(start_epoch)
 
     if args.local_rank == 0:
         _logger.info('Scheduled epochs: {}'.format(num_epochs))
@@ -565,8 +581,8 @@ def main():
                 loader_train.sampler.set_epoch(epoch)
 
             train_metrics = train_epoch(
-                epoch, model, loader_train, optimizer, train_loss_fn, args,
-                lr_scheduler=lr_scheduler, saver=saver, output_dir=output_dir,
+                epoch, model, loader_train, optimizer, optimizer_rcf, train_loss_fn, args,
+                lr_scheduler=lr_scheduler, lr_scheduler_rcf=lr_scheduler_rcf, saver=saver, output_dir=output_dir,
                 amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn)
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
@@ -586,6 +602,7 @@ def main():
             if lr_scheduler is not None:
                 # step LR for next epoch
                 lr_scheduler.step(epoch + 1, eval_metrics[eval_metric])
+                lr_scheduler_rcf.step(epoch +1)
 
             update_summary(
                 epoch, train_metrics, eval_metrics, os.path.join(output_dir, 'summary.csv'),
@@ -603,8 +620,8 @@ def main():
 
 
 def train_epoch(
-        epoch, model, loader, optimizer, loss_fn, args,
-        lr_scheduler=None, saver=None, output_dir='', amp_autocast=suppress,
+        epoch, model, loader, optimizer, optimizer_rcf, loss_fn, args,
+        lr_scheduler=None, lr_scheduler_rcf=None, saver=None, output_dir='', amp_autocast=suppress,
         loss_scaler=None, model_ema=None, mixup_fn=None):
 
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
@@ -641,6 +658,8 @@ def train_epoch(
             losses_m.update(loss.item(), input.size(0))
 
         optimizer.zero_grad()
+        if optimizer_rcf is not None:
+            optimizer_rcf.zero_grad()
         if loss_scaler is not None:
             loss_scaler(
                 loss, optimizer, clip_grad=args.clip_grad, parameters=model.parameters(), create_graph=second_order)
@@ -649,6 +668,8 @@ def train_epoch(
             if args.clip_grad is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
             optimizer.step()
+            if optimizer_rcf is not None:
+                optimizer_rcf.step()
 
         torch.cuda.synchronize()
         if model_ema is not None:
@@ -696,11 +717,18 @@ def train_epoch(
         if lr_scheduler is not None:
             lr_scheduler.step_update(num_updates=num_updates, metric=losses_m.avg)
 
+        if lr_scheduler_rcf is not None:
+            lr_scheduler_rcf.step_update(num_updates=num_updates)
+
         end = time.time()
         # end for
 
     if hasattr(optimizer, 'sync_lookahead'):
         optimizer.sync_lookahead()
+
+    if optimizer_rcf is not None:
+        if hasattr(optimizer_rcf, 'sync_lookahead'):
+            optimizer_rcf.sync_lookahead()
 
     return OrderedDict([('loss', losses_m.avg)])
 

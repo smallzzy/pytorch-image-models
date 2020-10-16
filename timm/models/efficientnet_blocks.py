@@ -10,6 +10,13 @@ from torch.nn import functional as F
 from .layers import create_conv2d, drop_path, get_act_layer
 from .layers.activations import sigmoid
 
+import kqat
+
+def fix_missing(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    name = 'scale'
+    if name not in state_dict:
+        state_dict[prefix + name] = torch.tensor(1.0, dtype=torch.float)
+
 # Defaults used for Google/Tensorflow training of mobile networks /w RMSprop as per
 # papers and TF reference implementations. PT momentum equiv for TF decay is (1 - TF decay)
 # NOTE: momentum varies btw .99 and .9997 depending on source
@@ -176,6 +183,12 @@ class DepthwiseSeparableConv(nn.Module):
         self.bn2 = norm_layer(out_chs, **norm_kwargs)
         self.act2 = act_layer(inplace=True) if self.has_pw_act else nn.Identity()
 
+        # add quantization
+        if self.has_residual:
+            self.plus = torch.nn.quantized.FloatFunctional()
+            self.scale = nn.Parameter(torch.tensor(1.0, dtype=torch.float))
+            self._register_load_state_dict_pre_hook(fix_missing)
+
     def feature_info(self, location):
         if location == 'expansion':  # after SE, input to PW
             info = dict(module='conv_pw', hook_type='forward_pre', num_chs=self.conv_pw.in_channels)
@@ -200,9 +213,18 @@ class DepthwiseSeparableConv(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
-            x += residual
+            residual = kqat.python.rcf.POT.apply(self.scale) * residual
+            x = self.plus.add(x, residual)
         return x
 
+    def fuse_modules(self):
+        from torch.quantization import fuse_modules
+        fuse_modules(self, ['conv_dw', 'bn1', 'act1'], inplace=True)
+
+        if self.has_pw_act:
+            fuse_modules(self, ['conv_pw', 'bn2', 'act2'], inplace=True)
+        else:
+            fuse_modules(self, ['conv_pw', 'bn2'], inplace=True)
 
 class InvertedResidual(nn.Module):
     """ Inverted residual block w/ optional SE and CondConv routing"""
@@ -243,6 +265,12 @@ class InvertedResidual(nn.Module):
         self.conv_pwl = create_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, **conv_kwargs)
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
+        # add quantization
+        if self.has_residual:
+            self.plus = torch.nn.quantized.FloatFunctional()
+            self.scale = nn.Parameter(torch.tensor(1.0, dtype=torch.float))
+            self._register_load_state_dict_pre_hook(fix_missing)
+
     def feature_info(self, location):
         if location == 'expansion':  # after SE, input to PWL
             info = dict(module='conv_pwl', hook_type='forward_pre', num_chs=self.conv_pwl.in_channels)
@@ -274,10 +302,16 @@ class InvertedResidual(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
-            x += residual
+            residual = kqat.python.rcf.POT.apply(self.scale) * residual
+            x = self.plus.add(x, residual)
 
         return x
 
+    def fuse_modules(self):
+        from torch.quantization import fuse_modules
+        fuse_modules(self, ['conv_pw', 'bn1', 'act1'], inplace=True)
+        fuse_modules(self, ['conv_dw', 'bn2', 'act2'], inplace=True)
+        fuse_modules(self, ['conv_pwl', 'bn3'], inplace=True)
 
 class CondConvResidual(InvertedResidual):
     """ Inverted residual block w/ CondConv routing"""

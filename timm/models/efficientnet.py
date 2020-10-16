@@ -334,6 +334,9 @@ class EfficientNet(nn.Module):
         super(EfficientNet, self).__init__()
         norm_kwargs = norm_kwargs or {}
 
+        from torch.quantization import QuantStub
+        self.quant = QuantStub()
+
         self.num_classes = num_classes
         self.num_features = num_features
         self.drop_rate = drop_rate
@@ -388,12 +391,23 @@ class EfficientNet(nn.Module):
         return x
 
     def forward(self, x):
+        x = self.quant(x)
         x = self.forward_features(x)
         x = self.global_pool(x)
         if self.drop_rate > 0.:
             x = F.dropout(x, p=self.drop_rate, training=self.training)
         return self.classifier(x)
 
+    def fuse_modules(self):
+        from torch.quantization import fuse_modules
+        from .efficientnet_blocks import DepthwiseSeparableConv, InvertedResidual
+
+        fuse_modules(self, ['conv_stem', 'bn1', 'act1'], inplace=True)
+        fuse_modules(self, ['conv_head', 'bn2', 'act2'], inplace=True)
+
+        for m in self.modules():
+            if isinstance(m, DepthwiseSeparableConv) or isinstance(m, InvertedResidual):
+                m.fuse_modules()
 
 class EfficientNetFeatures(nn.Module):
     """ EfficientNet Feature Extractor

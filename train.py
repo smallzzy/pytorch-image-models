@@ -445,6 +445,7 @@ def main():
         # NOTE: EMA model does not need to be wrapped by DDP
 
     lr_scheduler, num_epochs = create_scheduler(args, optimizer)
+    lr_scheduler_rcf = None
 
     if args.qat:
         import copy

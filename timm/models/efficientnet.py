@@ -400,13 +400,13 @@ class EfficientNet(nn.Module):
 
     def fuse_modules(self):
         from torch.quantization import fuse_modules
-        from .efficientnet_blocks import InvertedResidual
+        from .efficientnet_blocks import DepthwiseSeparableConv, InvertedResidual
 
         fuse_modules(self, ['conv_stem', 'bn1', 'act1'], inplace=True)
         fuse_modules(self, ['conv_head', 'bn2', 'act2'], inplace=True)
 
         for m in self.modules():
-            if isinstance(m, InvertedResidual):
+            if isinstance(m, DepthwiseSeparableConv) or isinstance(m, InvertedResidual):
                 m.fuse_modules()
 
 class EfficientNetFeatures(nn.Module):

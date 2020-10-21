@@ -176,6 +176,10 @@ class DepthwiseSeparableConv(nn.Module):
         self.bn2 = norm_layer(out_chs, **norm_kwargs)
         self.act2 = act_layer(inplace=True) if self.has_pw_act else nn.Identity()
 
+        # add quantization
+        if self.has_residual:
+            self.plus = torch.nn.quantized.FloatFunctional()
+
     def feature_info(self, location):
         if location == 'expansion':  # after SE, input to PW
             info = dict(module='conv_pw', hook_type='forward_pre', num_chs=self.conv_pw.in_channels)
@@ -200,9 +204,17 @@ class DepthwiseSeparableConv(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
-            x += residual
+            x = self.plus.add(x, residual)
         return x
 
+    def fuse_modules(self):
+        from torch.quantization import fuse_modules
+        fuse_modules(self, ['conv_dw', 'bn1', 'act1'], inplace=True)
+
+        if self.has_pw_act:
+            fuse_modules(self, ['conv_pw', 'bn2', 'act2'], inplace=True)
+        else:
+            fuse_modules(self, ['conv_pw', 'bn2'], inplace=True)
 
 class InvertedResidual(nn.Module):
     """ Inverted residual block w/ optional SE and CondConv routing"""
@@ -244,7 +256,8 @@ class InvertedResidual(nn.Module):
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
         # add quantization
-        self.plus = torch.nn.quantized.FloatFunctional()
+        if self.has_residual:
+            self.plus = torch.nn.quantized.FloatFunctional()
 
     def feature_info(self, location):
         if location == 'expansion':  # after SE, input to PWL

@@ -10,6 +10,13 @@ from torch.nn import functional as F
 from .layers import create_conv2d, drop_path, get_act_layer
 from .layers.activations import sigmoid
 
+import kqat
+
+def fix_missing(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+    name = 'scale'
+    if name not in state_dict:
+        state_dict[prefix + name] = torch.tensor(1.0, dtype=torch.float)
+
 # Defaults used for Google/Tensorflow training of mobile networks /w RMSprop as per
 # papers and TF reference implementations. PT momentum equiv for TF decay is (1 - TF decay)
 # NOTE: momentum varies btw .99 and .9997 depending on source
@@ -179,6 +186,8 @@ class DepthwiseSeparableConv(nn.Module):
         # add quantization
         if self.has_residual:
             self.plus = torch.nn.quantized.FloatFunctional()
+            self.scale = nn.Parameter(torch.tensor(1.0, dtype=torch.float))
+            self._register_load_state_dict_pre_hook(fix_missing)
 
     def feature_info(self, location):
         if location == 'expansion':  # after SE, input to PW
@@ -204,6 +213,7 @@ class DepthwiseSeparableConv(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
+            residual = kqat.python.rcf.POT.apply(self.scale) * residual
             x = self.plus.add(x, residual)
         return x
 
@@ -258,6 +268,8 @@ class InvertedResidual(nn.Module):
         # add quantization
         if self.has_residual:
             self.plus = torch.nn.quantized.FloatFunctional()
+            self.scale = nn.Parameter(torch.tensor(1.0, dtype=torch.float))
+            self._register_load_state_dict_pre_hook(fix_missing)
 
     def feature_info(self, location):
         if location == 'expansion':  # after SE, input to PWL
@@ -290,6 +302,7 @@ class InvertedResidual(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
+            residual = kqat.python.rcf.POT.apply(self.scale) * residual
             x = self.plus.add(x, residual)
 
         return x

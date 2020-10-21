@@ -603,6 +603,7 @@ def main():
             if lr_scheduler is not None:
                 # step LR for next epoch
                 lr_scheduler.step(epoch + 1, eval_metrics[eval_metric])
+            if lr_scheduler_rcf is not None:
                 lr_scheduler_rcf.step(epoch +1)
 
             update_summary(

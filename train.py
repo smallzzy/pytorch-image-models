@@ -346,7 +346,7 @@ def main():
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         attach_qconfig(args, model)
-        kqat.quant_model(model, inplace=True)
+        kqat.quant_model(model, mapping=kqat.kneron_qat_2passbn, inplace=True)
 
     use_amp = None
     if args.amp:

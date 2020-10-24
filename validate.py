@@ -23,6 +23,8 @@ from timm.models import create_model, apply_test_time_pool, load_checkpoint, is_
 from timm.data import Dataset, DatasetTar, create_loader, resolve_data_config, RealLabelsImagenet
 from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging, set_jit_legacy
 
+import kqat
+
 has_apex = False
 try:
     from apex import amp
@@ -102,7 +104,10 @@ parser.add_argument('--real-labels', default='', type=str, metavar='FILENAME',
                     help='Real labels JSON file for imagenet evaluation')
 parser.add_argument('--valid-labels', default='', type=str, metavar='FILENAME',
                     help='Valid label indices txt file for validation of partial label space')
-
+# kqat part
+parser.add_argument('--qat', action='store_true', default=False)
+parser.add_argument('--bitwidth', type=int, default=8)
+parser.add_argument('--pot', action='store_true', default=False)
 
 def validate(args):
     # might as well try to validate something
@@ -144,6 +149,12 @@ def validate(args):
     if args.torchscript:
         torch.jit.optimized_execution(True)
         model = torch.jit.script(model)
+
+    if args.qat:
+        # fuse model is currently model dependent
+        kqat.fuse_model(model, inplace=True)
+        attach_qconfig(args, model)
+        kqat.quant_model(model, inplace=True)
 
     model = model.cuda()
     if args.apex_amp:

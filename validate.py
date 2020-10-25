@@ -21,7 +21,9 @@ from contextlib import suppress
 
 from timm.models import create_model, apply_test_time_pool, load_checkpoint, is_model, list_models
 from timm.data import Dataset, DatasetTar, create_loader, resolve_data_config, RealLabelsImagenet
-from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging, set_jit_legacy
+from timm.utils import *
+
+import kqat
 
 has_apex = False
 try:
@@ -103,6 +105,9 @@ parser.add_argument('--real-labels', default='', type=str, metavar='FILENAME',
 parser.add_argument('--valid-labels', default='', type=str, metavar='FILENAME',
                     help='Valid label indices txt file for validation of partial label space')
 
+parser.add_argument('--qat', action='store_true', default=False)
+parser.add_argument('--bitwidth', type=int, default=8)
+parser.add_argument('--pot', action='store_true', default=False)
 
 def validate(args):
     # might as well try to validate something
@@ -140,6 +145,12 @@ def validate(args):
 
     data_config = resolve_data_config(vars(args), model=model)
     model, test_time_pool = (model, False) if args.no_test_pool else apply_test_time_pool(model, data_config)
+
+    if args.qat:
+        # fuse model is currently model dependent
+        kqat.fuse_model(model, inplace=True)
+        attach_qconfig(args, model)
+        kqat.quant_model(model, mapping=kqat.kneron_qat_2passbn, inplace=True)
 
     if args.torchscript:
         torch.jit.optimized_execution(True)

@@ -47,7 +47,7 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
         skip = {}
         if hasattr(model, 'no_weight_decay'):
             skip = model.no_weight_decay
-        parameters = add_weight_decay(model, weight_decay, skip)
+        parameters, _ = add_weight_decay(model, weight_decay, skip)
     else:
         parameters = model.parameters()
 

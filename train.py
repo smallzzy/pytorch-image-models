@@ -682,6 +682,11 @@ def train_epoch(
         if last_batch or batch_idx % args.log_interval == 0:
             lrl = [param_group['lr'] for param_group in optimizer.param_groups]
             lr = sum(lrl) / len(lrl)
+            if optimizer_rcf is not None:
+                lrl_rcf = [param_group['lr'] for param_group in optimizer_rcf.param_groups]
+                lr_rcf = sum(lrl_rcf) / len(lrl_rcf)
+            else:
+                lr_rcf = 0.0
 
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
@@ -694,6 +699,7 @@ def train_epoch(
                     'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  '
                     '({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  '
                     'LR: {lr:.3e}  '
+                    'LR-RCF: {lr_rcf:.3e}  '
                     'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
                         epoch,
                         batch_idx, len(loader),
@@ -703,6 +709,7 @@ def train_epoch(
                         rate=input.size(0) * args.world_size / batch_time_m.val,
                         rate_avg=input.size(0) * args.world_size / batch_time_m.avg,
                         lr=lr,
+                        lr_rcf=lr_rcf,
                         data_time=data_time_m))
 
                 if args.save_images and output_dir:

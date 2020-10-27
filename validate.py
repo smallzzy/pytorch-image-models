@@ -108,6 +108,8 @@ parser.add_argument('--valid-labels', default='', type=str, metavar='FILENAME',
 parser.add_argument('--qat', action='store_true', default=False)
 parser.add_argument('--bitwidth', type=int, default=8)
 parser.add_argument('--pot', action='store_true', default=False)
+parser.add_argument('--two-pass', action='store_true', default=False)
+
 
 def validate(args):
     # might as well try to validate something
@@ -154,7 +156,10 @@ def validate(args):
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         attach_qconfig(args, model)
-        kqat.quant_model(model, inplace=True)
+        if args.two_pass:
+            kqat.quant_model(model, mapping=kqat.kneron_qat_2passbn, inplace=True)
+        else:
+            kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
 
     model = model.cuda()
     if args.apex_amp:

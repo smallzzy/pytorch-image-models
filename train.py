@@ -265,6 +265,7 @@ parser.add_argument('--use-multi-epochs-loader', action='store_true', default=Fa
 parser.add_argument('--qat', action='store_true', default=False)
 parser.add_argument('--bitwidth', type=int, default=8)
 parser.add_argument('--pot', action='store_true', default=False)
+parser.add_argument('--freeze-sch', type=str, default='', help='csv, [edbp][0-9]*')
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -377,6 +378,11 @@ def main():
         model.cuda()
         if args.channels_last:
             model = model.to(memory_format=torch.channels_last)
+
+    if args.qat:
+        fb = kqat.FrozenBase(args.freeze_sch, kqat.FreezeRCFKneron(decay=0.1))
+    else:
+        fb = None
 
     if args.qat:
         optimizer, optimizer_rcf = create_optimizer_rcf(args, model)
@@ -577,15 +583,19 @@ def main():
         with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
             f.write(args_text)
 
+
     try:
         for epoch in range(start_epoch, num_epochs):
+            if fb:
+                fb.trigger(model, epoch)
+
             if args.distributed:
                 loader_train.sampler.set_epoch(epoch)
 
             train_metrics = train_epoch(
                 epoch, model, loader_train, optimizer, optimizer_rcf, train_loss_fn, args,
                 lr_scheduler=lr_scheduler, lr_scheduler_rcf=lr_scheduler_rcf, saver=saver, output_dir=output_dir,
-                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn)
+                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn, freeze_sch=fb)
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                 if args.local_rank == 0:
@@ -626,7 +636,7 @@ def main():
 def train_epoch(
         epoch, model, loader, optimizer, optimizer_rcf, loss_fn, args,
         lr_scheduler=None, lr_scheduler_rcf=None, saver=None, output_dir='', amp_autocast=suppress,
-        loss_scaler=None, model_ema=None, mixup_fn=None):
+        loss_scaler=None, model_ema=None, mixup_fn=None, freeze_sch=None):
 
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
@@ -679,6 +689,11 @@ def train_epoch(
         if model_ema is not None:
             model_ema.update(model)
         num_updates += 1
+
+        if freeze_sch:
+            freeze_sch.collect_batch(model, optimizer_rcf)
+            # trigger update at some point
+            freeze_sch.trigger_batch(model, epoch, batch_idx)
 
         batch_time_m.update(time.time() - end)
         if last_batch or batch_idx % args.log_interval == 0:

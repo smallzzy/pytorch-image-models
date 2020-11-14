@@ -17,6 +17,9 @@ from .helpers import build_model_with_cfg
 from .layers import DropBlock2d, DropPath, AvgPool2dSame, BlurPool2d, create_attn, create_classifier
 from .registry import register_model
 
+import kqat
+from .quant import fix_missing
+
 __all__ = ['ResNet', 'BasicBlock', 'Bottleneck']  # model_registry will add each entrypoint fn to this
 
 
@@ -347,6 +350,10 @@ class Bottleneck(nn.Module):
         self.drop_block = drop_block
         self.drop_path = drop_path
 
+        self.plus = torch.nn.quantized.FloatFunctional()
+        self.scale = nn.Parameter(torch.tensor(1.0, dtype=torch.float))
+        self._register_load_state_dict_pre_hook(fix_missing)
+
     def zero_init_last_bn(self):
         nn.init.zeros_(self.bn3.weight)
 
@@ -380,10 +387,26 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             residual = self.downsample(residual)
-        x += residual
+        residual = kqat.python.rcf.POT.apply(self.scale) * residual
+        x = self.plus.add(x, residual)
         x = self.act3(x)
 
         return x
+
+    def fuse_modules(self):
+        from torch.quantization import fuse_modules
+        fuse_modules(self, ['conv1', 'bn1', 'act1'], inplace=True)
+        fuse_modules(self, ['conv2', 'bn2', 'act2'], inplace=True)
+        fuse_modules(self, ['conv3', 'bn3'], inplace=True)
+
+        if self.downsample is not None:
+            lds = len(self.downsample)
+            if lds == 2:
+                # downsample conv
+                fuse_modules(self.downsample, ['0', '1'], inplace=True)
+            elif lds == 3:
+                # downsample avg
+                fuse_modules(self.downsample, ['1', '2'], inplace=True)
 
 
 def downsample_conv(
@@ -631,6 +654,13 @@ class ResNet(nn.Module):
         x = self.fc(x)
         return x
 
+    def fuse_modules(self):
+        from torch.quantization import fuse_modules
+        fuse_modules(self, ['conv1', 'bn1', 'act1'], inplace=True)
+
+        for m in self.modules():
+            if isinstance(m, Bottleneck):
+                m.fuse_modules()
 
 def _create_resnet(variant, pretrained=False, **kwargs):
     return build_model_with_cfg(

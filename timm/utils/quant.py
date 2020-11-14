@@ -3,28 +3,33 @@ import kqat
 
 def get_qconfig(weight_bw, pot):
     rcf_act = kqat.RCF.with_args(
+        qscheme=torch.per_tensor_symmetric,
         alpha=10.0,
         alpha_init=kqat.RCFInit.BN_3STD,
         bw=8,
-        is_weight=True,
-        alpha_pot=pot
+        is_weight=False,
+        alpha_pot=pot,
+        decay=0.98
     )
 
     rcf_weight = kqat.RCF.with_args(
+        qscheme=torch.per_channel_symmetric,
         alpha=5.0,
         alpha_init=kqat.RCFInit.RT_3STD,
         bw=weight_bw,
         is_weight=True,
-        alpha_pot=pot
+        alpha_pot=pot,
+        decay=0.98
     )
 
-
     rcf_weight_8bit = kqat.RCF.with_args(
+        qscheme=torch.per_channel_symmetric,
         alpha=5.0,
         alpha_init=kqat.RCFInit.RT_3STD,
         bw=8,
         is_weight=True,
-        alpha_pot=pot
+        alpha_pot=pot,
+        decay=0.98
     )
 
     qcfg = kqat.KQConfig(
@@ -46,5 +51,7 @@ def attach_qconfig(args, model):
         model.qconfig = qcfg
         model.conv_stem.qconfig = qcfg_8bit
         model.classifier.qconfig = qcfg_8bit
+    elif "resnet50" in args.model:
+        model.qconfig = qcfg
     else:
         raise NotImplementedError("wrong")

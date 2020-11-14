@@ -266,6 +266,8 @@ parser.add_argument('--qat', action='store_true', default=False)
 parser.add_argument('--bitwidth', type=int, default=8)
 parser.add_argument('--pot', action='store_true', default=False)
 parser.add_argument('--two-pass', action='store_true', default=False)
+parser.add_argument('--freeze-sch', type=str, default='', help='csv, [edbp][0-9]*')
+parser.add_argument('--freeze_freq', type=int, default=20)
 
 
 def _parse_args():
@@ -384,6 +386,11 @@ def main():
             model = model.to(memory_format=torch.channels_last)
 
     if args.qat:
+        fb = kqat.FrozenBase(args.freeze_sch, kqat.FreezeRCFKneron(decay=0.9))
+    else:
+        fb = None
+
+    if args.qat:
         optimizer, optimizer_rcf = create_optimizer_rcf(args, model)
     else:
         optimizer = create_optimizer(args, model)
@@ -446,7 +453,7 @@ def main():
         else:
             if args.local_rank == 0:
                 _logger.info("Using native Torch DistributedDataParallel.")
-            model = NativeDDP(model, device_ids=[args.local_rank])  # can use device str in Torch >= 1.1
+            model = NativeDDP(model, device_ids=[args.local_rank], find_unused_parameters=True)  # can use device str in Torch >= 1.1
         # NOTE: EMA model does not need to be wrapped by DDP
 
     lr_scheduler, num_epochs = create_scheduler(args, optimizer)
@@ -457,6 +464,8 @@ def main():
         args_rcf = copy.deepcopy(args)
         args_rcf.decay_rate = args.decay_rate_rcf
         lr_scheduler_rcf, _ = create_scheduler(args_rcf, optimizer_rcf)
+    else:
+        lr_scheduler_rcf = None
 
     start_epoch = 0
     if args.start_epoch is not None:
@@ -581,15 +590,19 @@ def main():
         with open(os.path.join(output_dir, 'args.yaml'), 'w') as f:
             f.write(args_text)
 
+
     try:
         for epoch in range(start_epoch, num_epochs):
+            if fb:
+                fb.trigger(model, epoch)
+
             if args.distributed:
                 loader_train.sampler.set_epoch(epoch)
 
             train_metrics = train_epoch(
                 epoch, model, loader_train, optimizer, optimizer_rcf, train_loss_fn, args,
                 lr_scheduler=lr_scheduler, lr_scheduler_rcf=lr_scheduler_rcf, saver=saver, output_dir=output_dir,
-                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn)
+                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn, freeze_sch=fb)
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                 if args.local_rank == 0:
@@ -608,6 +621,7 @@ def main():
             if lr_scheduler is not None:
                 # step LR for next epoch
                 lr_scheduler.step(epoch + 1, eval_metrics[eval_metric])
+
             if lr_scheduler_rcf is not None:
                 lr_scheduler_rcf.step(epoch +1)
 
@@ -629,7 +643,7 @@ def main():
 def train_epoch(
         epoch, model, loader, optimizer, optimizer_rcf, loss_fn, args,
         lr_scheduler=None, lr_scheduler_rcf=None, saver=None, output_dir='', amp_autocast=suppress,
-        loss_scaler=None, model_ema=None, mixup_fn=None):
+        loss_scaler=None, model_ema=None, mixup_fn=None, freeze_sch=None):
 
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
@@ -682,6 +696,12 @@ def train_epoch(
         if model_ema is not None:
             model_ema.update(model)
         num_updates += 1
+
+        if freeze_sch:
+            freeze_sch.collect_batch(model, optimizer_rcf)
+            # trigger update at some point
+            if num_updates % args.freeze_freq == 0:
+                freeze_sch.trigger_batch(model, epoch, batch_idx)
 
         batch_time_m.update(time.time() - end)
         if last_batch or batch_idx % args.log_interval == 0:

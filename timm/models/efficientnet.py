@@ -406,7 +406,7 @@ class EfficientNet(nn.Module):
         fuse_modules(self, ['conv_head', 'bn2', 'act2'], inplace=True)
 
         for m in self.modules():
-            if isinstance(m, DepthwiseSeparableConv) or isinstance(m, InvertedResidual):
+            if isinstance(m, (DepthwiseSeparableConv, InvertedResidual)):
                 m.fuse_modules()
 
 class EfficientNetFeatures(nn.Module):

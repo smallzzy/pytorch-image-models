@@ -11,11 +11,7 @@ from .layers import create_conv2d, drop_path, get_act_layer
 from .layers.activations import sigmoid
 
 import kqat
-
-def fix_missing(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
-    name = 'scale'
-    if name not in state_dict:
-        state_dict[prefix + name] = torch.tensor(1.0, dtype=torch.float)
+from .quant import fix_missing
 
 # Defaults used for Google/Tensorflow training of mobile networks /w RMSprop as per
 # papers and TF reference implementations. PT momentum equiv for TF decay is (1 - TF decay)

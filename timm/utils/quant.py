@@ -2,33 +2,37 @@ import torch
 import kqat
 
 def get_qconfig(weight_bw, pot):
-    rcf_act = kqat.RCF.with_args(
+    qmin, qmax = kqat.get_min_max(8)
+
+    rcf_act = kqat.KAQ.with_args(
         qscheme=torch.per_tensor_symmetric,
-        alpha=10.0,
-        alpha_init=kqat.RCFInit.BN_3STD,
-        bw=8,
+        qmin=qmin, qmax=qmax,
+        init=kqat.RadixInit.BN_3STD,
+        radix=1,
         is_weight=False,
-        alpha_pot=pot,
+        pot=pot,
         decay=0.98
     )
 
-    rcf_weight = kqat.RCF.with_args(
+    rcf_weight_8bit = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
-        alpha=5.0,
-        alpha_init=kqat.RCFInit.RT_3STD,
-        bw=weight_bw,
-        is_weight=True,
-        alpha_pot=pot,
+        qmin=qmin, qmax=qmax,
+        init=kqat.RadixInit.BN_3STD,
+        radix=1,
+        is_weight=False,
+        pot=pot,
         decay=0.98
     )
 
-    rcf_weight_8bit = kqat.RCF.with_args(
+    qmin, qmax = kqat.get_min_max(weight_bw)
+
+    rcf_weight = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
-        alpha=5.0,
-        alpha_init=kqat.RCFInit.RT_3STD,
-        bw=8,
-        is_weight=True,
-        alpha_pot=pot,
+        qmin=qmin, qmax=qmax,
+        init=kqat.RadixInit.BN_3STD,
+        radix=1,
+        is_weight=False,
+        pot=pot,
         decay=0.98
     )
 

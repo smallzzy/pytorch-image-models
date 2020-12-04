@@ -691,11 +691,6 @@ def train_epoch(
             model_ema.update(model)
         num_updates += 1
 
-        if freeze_sch:
-            freeze_sch.collect_batch(model, optimizer_rcf)
-            # trigger update at some point
-            freeze_sch.trigger_batch(model, epoch, batch_idx)
-
         batch_time_m.update(time.time() - end)
         if last_batch or batch_idx % args.log_interval == 0:
             lrl = [param_group['lr'] for param_group in optimizer.param_groups]
@@ -739,6 +734,12 @@ def train_epoch(
 
         if lr_scheduler_rcf is not None:
             lr_scheduler_rcf.step_update(num_updates=num_updates)
+
+        if freeze_sch:
+            freeze_sch.collect_batch(model, optimizer_rcf)
+            # trigger update at some point
+            if batch_idx != 0:
+                freeze_sch.trigger_batch(model, epoch, batch_idx)
 
         end = time.time()
         # end for

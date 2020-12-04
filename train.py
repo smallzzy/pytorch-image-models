@@ -350,7 +350,8 @@ def main():
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         attach_qconfig(args, model)
-        kqat.quant_model(model, mapping=kqat.kneron_qat_2passbn, inplace=True)
+        kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
+        torch.cuda.empty_cache()
 
     use_amp = None
     if args.amp:
@@ -380,7 +381,7 @@ def main():
             model = model.to(memory_format=torch.channels_last)
 
     if args.qat:
-        fb = kqat.FrozenBase(args.freeze_sch, kqat.FreezeRCFKneron(decay=0.1))
+        fb = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1))
     else:
         fb = None
 

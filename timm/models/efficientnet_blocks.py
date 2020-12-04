@@ -209,7 +209,7 @@ class DepthwiseSeparableConv(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
-            residual = kqat.python.rcf.POT.apply(self.scale) * residual
+            residual = kqat.ops.POT.apply(self.scale) * residual
             x = self.plus.add(x, residual)
         return x
 
@@ -298,7 +298,7 @@ class InvertedResidual(nn.Module):
         if self.has_residual:
             if self.drop_path_rate > 0.:
                 x = drop_path(x, self.drop_path_rate, self.training)
-            residual = kqat.python.rcf.POT.apply(self.scale) * residual
+            residual = kqat.ops.POT.apply(self.scale) * residual
             x = self.plus.add(x, residual)
 
         return x

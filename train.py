@@ -377,7 +377,8 @@ def main():
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         attach_qconfig(args, model)
-        kqat.quant_model(model, inplace=True)
+        kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
+        torch.cuda.empty_cache()
 
     # setup synchronized BatchNorm for distributed training
     if args.distributed and args.sync_bn:
@@ -398,7 +399,7 @@ def main():
         model = torch.jit.script(model)
 
     if args.qat:
-        fb = kqat.FrozenBase(args.freeze_sch, kqat.FreezeRCFKneron(decay=0.1))
+        fb = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1))
     else:
         fb = None
 

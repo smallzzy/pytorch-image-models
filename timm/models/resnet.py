@@ -387,7 +387,7 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             residual = self.downsample(residual)
-        residual = kqat.python.rcf.POT.apply(self.scale) * residual
+        residual = kqat.ops.POT.apply(self.scale) * residual
         x = self.plus.add(x, residual)
         x = self.act3(x)
 

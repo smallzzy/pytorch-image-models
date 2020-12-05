@@ -267,7 +267,7 @@ parser.add_argument('--bitwidth', type=int, default=8)
 parser.add_argument('--pot', action='store_true', default=False)
 parser.add_argument('--two-pass', action='store_true', default=False)
 parser.add_argument('--freeze-sch', type=str, default='', help='csv, [edbp][0-9]*')
-parser.add_argument('--freeze_freq', type=int, default=20)
+parser.add_argument('--freeze-freq', type=int, default=20)
 
 
 def _parse_args():

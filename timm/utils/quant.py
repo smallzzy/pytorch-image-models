@@ -53,6 +53,8 @@ def attach_qconfig(args, model):
         # model.classifier.qconfig = qcfg_8bit
     elif "resnet50" in args.model:
         model.qconfig = qcfg
+    elif "efficientnet_lite" in args.model:
+        model.qconfig = qcfg
     else:
         raise NotImplementedError("wrong")
 

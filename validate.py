@@ -156,10 +156,11 @@ def validate(args):
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         attach_qconfig(args, model)
-        if args.two_pass:
-            kqat.quant_model(model, mapping=kqat.kneron_qat_2passbn, inplace=True)
-        else:
-            kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
+        kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
+
+    if args.torchscript:
+        torch.jit.optimized_execution(True)
+        model = torch.jit.script(model)
 
     model = model.cuda()
     if args.apex_amp:

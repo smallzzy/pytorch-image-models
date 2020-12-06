@@ -22,7 +22,7 @@ except ImportError:
     has_apex = False
 
 
-def add_weight_decay(model, weight_decay=1e-5, skip_list=(), rcf_name='alpha'):
+def add_weight_decay(model, weight_decay=1e-5, skip_list=(), rcf_name='radix'):
     decay = []
     no_decay = []
     rcf = []
@@ -54,14 +54,14 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
     return create_optimizer_param(args, parameters)
 
 
-def create_optimizer_rcf(args, model, rcf_name='alpha'):
+def create_optimizer_rcf(args, model):
     weight_decay = args.weight_decay
     if not weight_decay:
         weight_decay = 0.
     skip = {}
     if hasattr(model, 'no_weight_decay'):
         skip = model.no_weight_decay
-    parameters, parameters_rcf = add_weight_decay(model, weight_decay, skip, rcf_name=rcf_name)
+    parameters, parameters_rcf = add_weight_decay(model, weight_decay, skip)
 
     return create_optimizer_param(args, parameters), optim.Adam(parameters_rcf, lr=args.lr_rcf)
 

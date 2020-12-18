@@ -8,7 +8,7 @@ def get_qconfig(weight_bw, pot):
         qscheme=torch.per_tensor_symmetric,
         qmin=qmin, qmax=qmax,
         init=kqat.RadixInit.BN_3STD,
-        radix=0,
+        threshold=6,
         is_weight=False,
         pot=pot,
         decay=0.98
@@ -17,9 +17,9 @@ def get_qconfig(weight_bw, pot):
     rcf_weight_8bit = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
         qmin=qmin, qmax=qmax,
-        init=kqat.RadixInit.BN_3STD,
-        radix=0,
-        is_weight=False,
+        init=kqat.RadixInit.RT_MINMAX,
+        threshold=6,
+        is_weight=True,
         pot=pot,
         decay=0.98
     )
@@ -29,9 +29,9 @@ def get_qconfig(weight_bw, pot):
     rcf_weight = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
         qmin=qmin, qmax=qmax,
-        init=kqat.RadixInit.BN_3STD,
-        radix=0,
-        is_weight=False,
+        init=kqat.RadixInit.RT_MINMAX,
+        threshold=6,
+        is_weight=True,
         pot=pot,
         decay=0.98
     )

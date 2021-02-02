@@ -14,7 +14,8 @@ from .nvnovograd import NvNovoGrad
 from .radam import RAdam
 from .rmsprop_tf import RMSpropTF
 from .sgdp import SGDP
-from kqat import Lamb
+
+import kqat
 
 try:
     from apex.optimizers import FusedNovoGrad, FusedAdam, FusedLAMB, FusedSGD
@@ -37,8 +38,14 @@ def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
         {'params': no_decay, 'weight_decay': 0.},
         {'params': decay, 'weight_decay': weight_decay}]
 
+def create_optimizer(args, model, filter_bias_and_bn=True, optim_list=False):
+    res_param = []
+    named_param = model.named_parameters()
 
-def create_optimizer(args, model, filter_bias_and_bn=True):
+    if args.qat:
+        qat_param, named_param = kqat.split_parameter(named_param)
+        res_param.append(qat_param)
+
     weight_decay = args.weight_decay
     if weight_decay and filter_bias_and_bn:
         skip = {}
@@ -48,7 +55,7 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
     else:
         parameters = model.parameters()
 
-    return create_optimizer_param(args, parameters)
+    res_param.append({'params': kqat.collect_parameter(named_param)})
 
 def create_optimizer_param(args, parameters):
     opt_lower = args.opt.lower()

@@ -219,6 +219,10 @@ def validate(args):
     top1 = AverageMeter()
     top5 = AverageMeter()
 
+    if args.qat:
+        fb = kqat.freeze.SensitivitySchedule()
+        fb.trigger(model)
+
     model.eval()
     with torch.no_grad():
         # warmup, reduce variability of first batch time, especially for comparing torchscript vs non
@@ -250,6 +254,10 @@ def validate(args):
             losses.update(loss.item(), input.size(0))
             top1.update(acc1.item(), input.size(0))
             top5.update(acc5.item(), input.size(0))
+
+            if args.qat:
+                fb.trigger_batch(model, (input,))
+                fb.dump()
 
             # measure elapsed time
             batch_time.update(time.time() - end)

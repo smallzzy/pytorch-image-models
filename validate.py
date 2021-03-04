@@ -24,6 +24,7 @@ from timm.data import create_dataset, create_loader, resolve_data_config, RealLa
 from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging, set_jit_legacy
 
 import kqat
+from timm.utils import attach_qconfig
 
 has_apex = False
 try:
@@ -114,6 +115,7 @@ parser.add_argument('--valid-labels', default='', type=str, metavar='FILENAME',
 parser.add_argument('--qat', action='store_true', default=False)
 parser.add_argument('--bitwidth', type=int, default=8)
 parser.add_argument('--pot', action='store_true', default=False)
+parser.add_argument('--distill', action='store_true', default=False)
 
 def validate(args):
     # might as well try to validate something
@@ -165,7 +167,11 @@ def validate(args):
     if args.qat:
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
-        attach_qconfig(args, model)
+        if args.distill:
+            qcfg, _ = kqat.get_default_qconfig(args.bitwidth, args.pot)
+            model.qconfig = qcfg
+        else:
+            attach_qconfig(args, model)
         kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
 
     if args.torchscript:
@@ -188,6 +194,9 @@ def validate(args):
         root=args.data, name=args.dataset, split=args.split,
         load_bytes=args.tf_preprocessing, class_map=args.class_map)
 
+    if args.distill:
+        dataset = kqat.get_distill_dataset(model, (3, 224, 224), batch_size=args.batch_size, num_workers=args.workers)
+    
     if args.valid_labels:
         with open(args.valid_labels, 'r') as f:
             valid_labels = {int(line.rstrip()) for line in f}
@@ -244,6 +253,14 @@ def validate(args):
 
             if valid_labels is not None:
                 output = output[:, valid_labels]
+
+            if args.qat:
+                fb.trigger_batch(model, (input,))
+                fb.dump()
+
+            if args.distill:
+                continue
+
             loss = criterion(output, target)
 
             if real_labels is not None:
@@ -254,10 +271,6 @@ def validate(args):
             losses.update(loss.item(), input.size(0))
             top1.update(acc1.item(), input.size(0))
             top5.update(acc5.item(), input.size(0))
-
-            if args.qat:
-                fb.trigger_batch(model, (input,))
-                fb.dump()
 
             # measure elapsed time
             batch_time.update(time.time() - end)

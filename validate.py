@@ -116,6 +116,7 @@ parser.add_argument('--qat', action='store_true', default=False)
 parser.add_argument('--bitwidth', type=int, default=8)
 parser.add_argument('--pot', action='store_true', default=False)
 parser.add_argument('--distill', action='store_true', default=False)
+parser.add_argument('--sens', action='store_true', default=False)
 
 def validate(args):
     # might as well try to validate something
@@ -153,6 +154,16 @@ def validate(args):
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
         args.num_classes = model.num_classes
 
+    if args.qat:
+        # fuse model is currently model dependent
+        kqat.fuse_model(model, inplace=True)
+        if args.distill:
+            qcfg, _ = kqat.get_default_qconfig(args.bitwidth, args.pot)
+            model.qconfig = qcfg
+        else:
+            attach_qconfig(args, model)
+        kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
+
     if args.checkpoint:
         load_checkpoint(model, args.checkpoint, args.use_ema)
 
@@ -163,16 +174,6 @@ def validate(args):
     test_time_pool = False
     if not args.no_test_pool:
         model, test_time_pool = apply_test_time_pool(model, data_config, use_test_size=True)
-
-    if args.qat:
-        # fuse model is currently model dependent
-        kqat.fuse_model(model, inplace=True)
-        if args.distill:
-            qcfg, _ = kqat.get_default_qconfig(args.bitwidth, args.pot)
-            model.qconfig = qcfg
-        else:
-            attach_qconfig(args, model)
-        kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
 
     if args.torchscript:
         torch.jit.optimized_execution(True)
@@ -195,7 +196,8 @@ def validate(args):
         load_bytes=args.tf_preprocessing, class_map=args.class_map)
 
     if args.distill:
-        dataset = kqat.get_distill_dataset(model, (3, 224, 224), batch_size=args.batch_size, num_workers=args.workers)
+        dataset = kqat.get_distill_dataset(model, (3, 224, 224), num_batch=2,
+            batch_size=args.batch_size, num_workers=args.workers)
     
     if args.valid_labels:
         with open(args.valid_labels, 'r') as f:
@@ -228,7 +230,7 @@ def validate(args):
     top1 = AverageMeter()
     top5 = AverageMeter()
 
-    if args.qat:
+    if args.qat and args.sens:
         fb = kqat.freeze.SensitivitySchedule()
         fb.trigger(model)
 
@@ -254,9 +256,8 @@ def validate(args):
             if valid_labels is not None:
                 output = output[:, valid_labels]
 
-            if args.qat:
+            if args.qat and args.sens:
                 fb.trigger_batch(model, (input,))
-                fb.dump()
 
             if args.distill:
                 continue
@@ -286,6 +287,9 @@ def validate(args):
                         batch_idx, len(loader), batch_time=batch_time,
                         rate_avg=input.size(0) / batch_time.avg,
                         loss=losses, top1=top1, top5=top5))
+
+    if args.qat and args.sens:
+        fb.dump('sens_{}.json'.format(args.bitwidth))
 
     if real_labels is not None:
         # real labels mode replaces topk values at the end

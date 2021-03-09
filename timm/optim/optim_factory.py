@@ -24,10 +24,10 @@ except ImportError:
     has_apex = False
 
 
-def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
+def add_weight_decay(named_param, weight_decay=1e-5, skip_list=()):
     decay = []
     no_decay = []
-    for name, param in model.named_parameters():
+    for name, param in named_param:
         if not param.requires_grad:
             continue  # frozen weights
         if len(param.shape) == 1 or name.endswith(".bias") or name in skip_list:
@@ -38,12 +38,12 @@ def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
         {'params': no_decay, 'weight_decay': 0.},
         {'params': decay, 'weight_decay': weight_decay}]
 
-def create_optimizer(args, model, filter_bias_and_bn=True, optim_list=False):
+def create_optimizer(args, model, filter_bias_and_bn=True):
     res_param = []
     named_param = model.named_parameters()
 
     if args.qat:
-        qat_param, named_param = kqat.split_parameter(named_param)
+        qat_param, named_param = kqat.split_parameter(named_param, lr=args.lr_qat)
         res_param.append(qat_param)
 
     weight_decay = args.weight_decay
@@ -51,11 +51,11 @@ def create_optimizer(args, model, filter_bias_and_bn=True, optim_list=False):
         skip = {}
         if hasattr(model, 'no_weight_decay'):
             skip = model.no_weight_decay()
-        parameters = add_weight_decay(model, weight_decay, skip)
+        res_param.extend(add_weight_decay(named_param, weight_decay, skip))
     else:
-        parameters = model.parameters()
-
-    res_param.append({'params': kqat.collect_parameter(named_param)})
+        res_param.append({'params': kqat.collect_parameter(named_param)})
+    
+    return create_optimizer_param(args, res_param)
 
 def create_optimizer_param(args, parameters):
     opt_lower = args.opt.lower()

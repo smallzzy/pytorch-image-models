@@ -154,6 +154,10 @@ def validate(args):
         assert hasattr(model, 'num_classes'), 'Model must have `num_classes` attr if not set on cmd line/config.'
         args.num_classes = model.num_classes
 
+    if args.distill:
+        dataset = kqat.get_distill_dataset(model, (3, 224, 224), num_batch=2,
+            batch_size=args.batch_size, num_workers=args.workers)
+
     if args.qat:
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
@@ -162,7 +166,10 @@ def validate(args):
             model.qconfig = qcfg
         else:
             attach_qconfig(args, model)
-        kqat.quant_model(model, mapping=kqat.kneron_qat_default, inplace=True)
+        timm_mapping = kqat.kneron_qat_default
+        from timm.models.layers import Linear
+        timm_mapping[Linear] = kqat.quant.modules.Linear
+        kqat.quant_model(model, mapping=timm_mapping, inplace=True)
 
     if args.checkpoint:
         load_checkpoint(model, args.checkpoint, args.use_ema)
@@ -191,13 +198,10 @@ def validate(args):
 
     criterion = nn.CrossEntropyLoss().cuda()
 
-    dataset = create_dataset(
-        root=args.data, name=args.dataset, split=args.split,
-        load_bytes=args.tf_preprocessing, class_map=args.class_map)
-
-    if args.distill:
-        dataset = kqat.get_distill_dataset(model, (3, 224, 224), num_batch=2,
-            batch_size=args.batch_size, num_workers=args.workers)
+    if not args.distill:
+        dataset = create_dataset(
+            root=args.data, name=args.dataset, split=args.split,
+            load_bytes=args.tf_preprocessing, class_map=args.class_map)
     
     if args.valid_labels:
         with open(args.valid_labels, 'r') as f:

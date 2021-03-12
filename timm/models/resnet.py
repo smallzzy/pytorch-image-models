@@ -394,10 +394,9 @@ class Bottleneck(nn.Module):
         return x
 
     def fuse_modules(self):
-        from torch.quantization import fuse_modules
-        fuse_modules(self, ['conv1', 'bn1', 'act1'], inplace=True)
-        fuse_modules(self, ['conv2', 'bn2', 'act2'], inplace=True)
-        fuse_modules(self, ['conv3', 'bn3'], inplace=True)
+        kqat.fuse_modules(self, ['conv1', 'bn1', 'act1'], inplace=True)
+        kqat.fuse_modules(self, ['conv2', 'bn2', 'act2'], inplace=True)
+        kqat.fuse_modules(self, ['conv3', 'bn3'], inplace=True)
 
         if self.downsample is not None:
             lds = len(self.downsample)
@@ -655,8 +654,7 @@ class ResNet(nn.Module):
         return x
 
     def fuse_modules(self):
-        from torch.quantization import fuse_modules
-        fuse_modules(self, ['conv1', 'bn1', 'act1'], inplace=True)
+        kqat.fuse_modules(self, ['conv1', 'bn1', 'act1'], inplace=True)
 
         for m in self.modules():
             if isinstance(m, Bottleneck):

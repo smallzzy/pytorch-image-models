@@ -214,13 +214,12 @@ class DepthwiseSeparableConv(nn.Module):
         return x
 
     def fuse_modules(self):
-        from torch.quantization import fuse_modules
-        fuse_modules(self, ['conv_dw', 'bn1', 'act1'], inplace=True)
+        kqat.fuse_modules(self, ['conv_dw', 'bn1', 'act1'], inplace=True)
 
         if self.has_pw_act:
-            fuse_modules(self, ['conv_pw', 'bn2', 'act2'], inplace=True)
+            kqat.fuse_modules(self, ['conv_pw', 'bn2', 'act2'], inplace=True)
         else:
-            fuse_modules(self, ['conv_pw', 'bn2'], inplace=True)
+            kqat.fuse_modules(self, ['conv_pw', 'bn2'], inplace=True)
 
 class InvertedResidual(nn.Module):
     """ Inverted residual block w/ optional SE and CondConv routing"""
@@ -304,10 +303,9 @@ class InvertedResidual(nn.Module):
         return x
 
     def fuse_modules(self):
-        from torch.quantization import fuse_modules
-        fuse_modules(self, ['conv_pw', 'bn1', 'act1'], inplace=True)
-        fuse_modules(self, ['conv_dw', 'bn2', 'act2'], inplace=True)
-        fuse_modules(self, ['conv_pwl', 'bn3'], inplace=True)
+        kqat.fuse_modules(self, ['conv_pw', 'bn1', 'act1'], inplace=True)
+        kqat.fuse_modules(self, ['conv_dw', 'bn2', 'act2'], inplace=True)
+        kqat.fuse_modules(self, ['conv_pwl', 'bn3'], inplace=True)
 
 class CondConvResidual(InvertedResidual):
     """ Inverted residual block w/ CondConv routing"""

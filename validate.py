@@ -161,7 +161,7 @@ def validate(args):
     if args.qat:
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
-        if args.distill:
+        if args.sens:
             qcfg, _ = kqat.get_default_qconfig(args.bitwidth, args.pot)
             model.qconfig = qcfg
         else:

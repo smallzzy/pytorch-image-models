@@ -399,6 +399,7 @@ class EfficientNet(nn.Module):
         return self.classifier(x)
 
     def fuse_modules(self):
+        import kqat
         from .efficientnet_blocks import DepthwiseSeparableConv, InvertedResidual
 
         kqat.fuse_modules(self, ['conv_stem', 'bn1', 'act1'], inplace=True)

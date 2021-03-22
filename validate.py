@@ -235,7 +235,7 @@ def validate(args):
     top5 = AverageMeter()
 
     if args.qat and args.sens:
-        fb = kqat.freeze.SensitivitySchedule()
+        fb = kqat.sens.SensitivitySchedule()
         fb.trigger(model)
 
     model.eval()

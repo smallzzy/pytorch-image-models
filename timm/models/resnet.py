@@ -402,10 +402,10 @@ class Bottleneck(nn.Module):
             lds = len(self.downsample)
             if lds == 2:
                 # downsample conv
-                fuse_modules(self.downsample, ['0', '1'], inplace=True)
+                kqat.fuse_modules(self.downsample, ['0', '1'], inplace=True)
             elif lds == 3:
                 # downsample avg
-                fuse_modules(self.downsample, ['1', '2'], inplace=True)
+                kqat.fuse_modules(self.downsample, ['1', '2'], inplace=True)
 
 
 def downsample_conv(

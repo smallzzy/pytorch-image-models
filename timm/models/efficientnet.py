@@ -1655,7 +1655,7 @@ def tf_efficientnet_lite4(pretrained=False, **kwargs):
     """ EfficientNet-Lite4 """
     # NOTE for train, drop_rate should be 0.4, drop_path_rate should be 0.2
     kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
-    kwargs['pad_type'] = 'same'
+    # kwargs['pad_type'] = 'same'
     model = _gen_efficientnet_lite(
         'tf_efficientnet_lite4', channel_multiplier=1.4, depth_multiplier=1.8, pretrained=pretrained, **kwargs)
     return model

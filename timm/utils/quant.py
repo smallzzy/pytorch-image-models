@@ -7,7 +7,7 @@ def get_qconfig(weight_bw, pot):
     rcf_act = kqat.KAQ.with_args(
         qscheme=torch.per_tensor_symmetric,
         qmin=qmin, qmax=qmax,
-        init=kqat.RadixInit.BN_3STD,
+        init=kqat.RadixInit.BN_3STD|kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=False,
         pot=pot,

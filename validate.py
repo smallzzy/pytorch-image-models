@@ -235,7 +235,8 @@ def validate(args):
     top5 = AverageMeter()
 
     if args.qat and args.sens:
-        fb = kqat.sens.SensitivitySchedule()
+        fb = kqat.SensitivitySchedule(postprocess=torch.nn.LogSoftmax(), 
+            loss=torch.nn.KLDivLoss(log_target=True))
         fb.trigger(model)
 
     model.eval()

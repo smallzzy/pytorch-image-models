@@ -43,8 +43,8 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
     named_param = model.named_parameters()
 
     if args.qat:
-        qat_param, named_param = kqat.split_parameter(named_param, lr=args.lr_qat)
-        res_param.append(qat_param)
+        qat_param, named_param = kqat.split_parameter(named_param)
+        res_param.append({'params': qat_param, 'lr': args.lr_qat, 'weight_decay': 0.})
 
     weight_decay = args.weight_decay
     if weight_decay and filter_bias_and_bn:

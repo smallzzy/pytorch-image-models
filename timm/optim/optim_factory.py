@@ -80,11 +80,6 @@ def create_optimizer_v2(
         **kwargs):
     """ Create an optimizer.
 
-    TODO currently the model is passed in and all parameters are selected for optimization.
-    For more general use an interface that allows selection of parameters to optimize and lr groups, one of:
-      * a filter fn interface that further breaks params into groups in a weight_decay compatible fashion
-      * expose the parameters interface and leave it up to caller
-
     Args:
         model (nn.Module): model containing parameters to optimize
         optimizer_name: name of optimizer to create
@@ -97,7 +92,6 @@ def create_optimizer_v2(
     Returns:
         Optimizer
     """
-    opt_lower = optimizer_name.lower()
     if weight_decay and filter_bias_and_bn:
         skip = {}
         if hasattr(model, 'no_weight_decay'):
@@ -106,9 +100,40 @@ def create_optimizer_v2(
         weight_decay = 0.
     else:
         parameters = model.parameters()
+
+    return create_optimizer_param(parameters=parameters, 
+        optimizer_name=optimizer_name, 
+        learning_rate=learning_rate, 
+        weight_decay=weight_decay,
+        momentum=momentum,
+        **kwargs
+        )
+
+def create_optimizer_param(
+    parameters: nn.Parameter,
+    optimizer_name: str = 'sgd',
+    learning_rate: Optional[float] = None,
+    weight_decay: float = 0.,
+    momentum: float = 0.9,
+    **kwargs):
+    """ Create an optimizer for the given parameters.
+
+    Args:
+        parameters: list of parameters to optimize, can be carry additional optimizer options
+        optimizer_name: name of optimizer to create
+        learning_rate: initial learning rate
+        weight_decay: weight decay to apply in optimizer
+        momentum:  momentum for momentum based optimizers (others may use betas via kwargs)
+        **kwargs: extra optimizer specific kwargs to pass through
+
+    Returns:
+        Optimizer
+    """
+
+    opt_lower = optimizer_name.lower()
     if 'fused' in opt_lower:
         assert has_apex and torch.cuda.is_available(), 'APEX and CUDA required for fused optimizers'
-
+    
     opt_args = dict(lr=learning_rate, weight_decay=weight_decay, **kwargs)
     opt_split = opt_lower.split('_')
     opt_lower = opt_split[-1]

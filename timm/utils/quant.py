@@ -1,12 +1,13 @@
 import torch
 import kqat
 
-def get_qconfig(weight_bw, pot):
+def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.]):
     qmin, qmax = kqat.get_min_max(8)
 
     rcf_act = kqat.KAQ.with_args(
         qscheme=torch.per_tensor_symmetric,
         qmin=qmin, qmax=qmax,
+        bitwidth_range=bitwidth_range,
         init=kqat.RadixInit.BN_3STD|kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=False,
@@ -17,6 +18,7 @@ def get_qconfig(weight_bw, pot):
     rcf_weight_8bit = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
         qmin=qmin, qmax=qmax,
+        bitwidth_range=bitwidth_range,
         init=kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=True,
@@ -29,6 +31,7 @@ def get_qconfig(weight_bw, pot):
     rcf_weight = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
         qmin=qmin, qmax=qmax,
+        bitwidth_range=bitwidth_range,
         init=kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=True,
@@ -49,7 +52,7 @@ def get_qconfig(weight_bw, pot):
     return qcfg, qcfg_8bit
 
 def attach_qconfig(args, model):
-    qcfg, qcfg_8bit = get_qconfig(args.bitwidth, args.pot)
+    qcfg, qcfg_8bit = get_qconfig(args.bitwidth, args.pot, args.bitwidth_range)
     # qconfig attaching is always model dependent?
     if "mobilenetv2" in args.model:
         model.qconfig = qcfg

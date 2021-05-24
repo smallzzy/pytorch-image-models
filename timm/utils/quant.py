@@ -1,13 +1,14 @@
 import torch
 import kqat
 
-def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.]):
+def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.], symmetric_clipping=False):
     qmin, qmax = kqat.get_min_max(8)
 
     rcf_act = kqat.KAQ.with_args(
         qscheme=torch.per_tensor_symmetric,
         qmin=qmin, qmax=qmax,
         bitwidth_range=bitwidth_range,
+        symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.BN_3STD|kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=False,
@@ -19,6 +20,7 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.]):
         qscheme=torch.per_channel_symmetric,
         qmin=qmin, qmax=qmax,
         bitwidth_range=bitwidth_range,
+        symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=True,
@@ -32,6 +34,7 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.]):
         qscheme=torch.per_channel_symmetric,
         qmin=qmin, qmax=qmax,
         bitwidth_range=bitwidth_range,
+        symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.RT_MINMAX,
         threshold=6,
         is_weight=True,
@@ -52,7 +55,7 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.]):
     return qcfg, qcfg_8bit
 
 def attach_qconfig(args, model):
-    qcfg, qcfg_8bit = get_qconfig(args.bitwidth, args.pot, args.bitwidth_range)
+    qcfg, qcfg_8bit = get_qconfig(args.bitwidth, args.pot, args.bitwidth_range, args.symmetric_clipping)
     # qconfig attaching is always model dependent?
     if "mobilenetv2" in args.model:
         model.qconfig = qcfg

@@ -279,6 +279,7 @@ parser.add_argument('--lr-qat', type=float, default=0.0001,
                     help='learning rate for quantization radix (default: 0.0001)')
 parser.add_argument('--assignment', type=str, default='')
 parser.add_argument('--bitwidth-range', nargs='*', default=[8, 8, 8], type=int, help='set the range of bitwidth')
+parser.add_argument('--symmetric-clipping', action='store_true', default=False)
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -385,7 +386,7 @@ def main():
         kqat.fuse_model(model, inplace=True)
         timm_mapping = kqat.kneron_qat_default
         timm_mapping[Linear] = kqat.quant.modules.Linear
-        qconfig = get_qconfig(4, True, args.bitwidth_range)
+        qconfig = get_qconfig(4, True, args.bitwidth_range, args.symmetric_clipping)
         if args.assignment:
             model.qconfig = qconfig[1]
             kqat.load_qconfig(args.assignment, model, qconfig)

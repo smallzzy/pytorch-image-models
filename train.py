@@ -388,12 +388,12 @@ def main():
         timm_mapping[Linear] = kqat.quant.modules.Linear
         qconfig = get_qconfig(4, True, args.bitwidth_range, args.symmetric_clipping)
         if args.assignment:
-            model.qconfig = qconfig[1]
+            model.qconfig = qconfig
             kqat.load_qconfig(args.assignment, model, qconfig)
             if "mobilenetv2" in args.model:
                 for n, m in model.named_modules():
                     if 'conv_dw' in n:
-                        m.qconfig = qconfig[1]
+                        m.qconfig = qconfig
             elif "resnet50" in args.model:
                 pass
             else:
@@ -401,11 +401,11 @@ def main():
         else:
             attach_qconfig(args, model)
             if "mobilenetv2" in args.model:
-                model.conv_stem.qconfig = qconfig[1]
-                model.classifier.qconfig = qconfig[1]
+                model.conv_stem.qconfig = qconfig
+                model.classifier.qconfig = qconfig
                 for n, m in model.named_modules():
                     if 'conv_dw' in n:
-                        m.qconfig = qconfig[1]
+                        m.qconfig = qconfig
             elif "resnet50" in args.model:
                 pass
             else:

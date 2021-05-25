@@ -1,4 +1,5 @@
-./distributed_train.sh 6 /workspace/develop/dataset/ --model mobilenetv2_100 --dataset imagenet_2012 --pretrained --sched cosine --weight-decay 2e-5 --warmup-epochs 0 --cooldown-epochs 5 --sync-bn --log-interval 500 -j 16 --pin-mem --qat --pot -b 32 --opt fusedlamb --epochs 5 --bitwidth 4 --lr 0.0006 --lr-qat 0.03 --lr-cycle-mul 5 --min-lr 5e-6 --lr-cycle-limit 2 --decay-rate 0.6 --freeze-sch 5d,15p --min-lr 2e-6 --bitwidth-range 2 4 8 --symmetric-clipping
+./distributed_train.sh 2 /workspace/develop/dataset/ --model mobilenetv2_100 --dataset imagenet_2012 --pretrained --sched cosine --weight-decay 2e-5 --warmup-epochs 0 --cooldown-epochs 5 --sync-bn --log-interval 500 -j 16 --pin-mem --qat --pot -b 32 --opt fusedlamb --epochs 5 --bitwidth 4 --lr 0.0006 --lr-qat 0.03 --lr-cycle-mul 5 --min-lr 5e-6 --lr-cycle-limit 2 --decay-rate 0.6 --freeze-sch 5d,15p --min-lr 2e-6 --bitwidth-range 2 4 8 --symmetric-clipping
+python ./train.py /workspace/develop/dataset/ --model mobilenetv2_100 --dataset imagenet_1k --pretrained --sched cosine --weight-decay 2e-5 --warmup-epochs 0 --cooldown-epochs 5 --sync-bn --log-interval 500 -j 16 --pin-mem --qat --pot -b 32 --opt fusedlamb --epochs 5 --bitwidth 4 --lr 0.0006 --lr-qat 0.03 --lr-cycle-mul 5 --min-lr 5e-6 --lr-cycle-limit 2 --decay-rate 0.6 --freeze-sch 5d,15p --min-lr 2e-6 --bitwidth-range 2 4 8 --symmetric-clipping
 
 
 

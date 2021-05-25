@@ -6,7 +6,7 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.], symmetric_clipping=Fa
 
     rcf_act = kqat.KAQ.with_args(
         qscheme=torch.per_tensor_symmetric,
-        qmin=qmin, qmax=qmax,
+        # qmin=qmin, qmax=qmax,
         bitwidth_range=bitwidth_range,
         symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.BN_3STD|kqat.RadixInit.RT_MINMAX,
@@ -32,7 +32,7 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.], symmetric_clipping=Fa
 
     rcf_weight = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
-        qmin=qmin, qmax=qmax,
+        # qmin=qmin, qmax=qmax,
         bitwidth_range=bitwidth_range,
         symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.RT_MINMAX,

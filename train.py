@@ -302,7 +302,15 @@ def main():
     setup_default_logging()
     args, args_text = _parse_args()
 
-    args.bitwidth_range = [float(i) for i in args.bitwidth_range]
+    args.bitwidth_range = [float(i) for i in list(set(args.bitwidth_range))]
+    args.bitwidth_range = sorted(args.bitwidth_range)
+    if args.symmetric_clipping:
+        lowerbound = 1.0
+    else:
+        lowerbound = 0.0
+    if args.bitwidth_range[0]<lowerbound or args.bitwidth_range[-1] > 8.0:
+        raise Exception("bitwidth range is out of range!")
+
 
     args.prefetcher = not args.no_prefetcher
     args.distributed = False

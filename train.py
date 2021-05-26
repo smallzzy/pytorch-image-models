@@ -474,6 +474,10 @@ def main():
         if args.resume:
             load_checkpoint(model_ema.module, args.resume, use_ema=True)
 
+    if args.qat:
+        fakeinput = torch.randn(args.batch_size, 3, 224, 224, dtype=torch.float32, device="cuda")
+        kqat.initialize(model, fakeinput)
+
     # setup distributed training
     if args.distributed:
         if has_apex and use_amp != 'native':

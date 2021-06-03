@@ -371,6 +371,10 @@ def main():
         _logger.info('Model %s created, param count: %d' %
                      (args.model, sum([m.numel() for m in model.parameters()])))
 
+    x = torch.randn((1, 3, 224, 224))
+    from kqat.trace import ConnectedGraph
+    t = ConnectedGraph(model, x)
+
     data_config = resolve_data_config(vars(args), model=model, verbose=args.local_rank == 0)
 
     # setup augmentation batch splits for contrastive loss or split bn
@@ -384,10 +388,12 @@ def main():
         assert num_aug_splits > 1 or args.resplit
         model = convert_splitbn_model(model, max(num_aug_splits, 2))
 
+
     # move model to GPU, enable channels last layout if set
     model.cuda()
     if args.channels_last:
         model = model.to(memory_format=torch.channels_last)
+
 
     if args.qat:
         # fuse model is currently model dependent

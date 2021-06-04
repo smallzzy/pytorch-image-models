@@ -278,8 +278,12 @@ parser.add_argument('--freeze-sch', type=str, default='', help='csv, [edbp][0-9]
 parser.add_argument('--lr-qat', type=float, default=0.0001,
                     help='learning rate for quantization radix (default: 0.0001)')
 parser.add_argument('--assignment', type=str, default='')
-parser.add_argument('--bitwidth-range', nargs='*', default=[8, 8, 8], type=int, help='set the range of bitwidth')
+parser.add_argument('--bitwidth-range', nargs='*', default=[8], type=int, help='set the range of bitwidth')
 parser.add_argument('--symmetric-clipping', action='store_true', default=False)
+parser.add_argument('--loss-gamma', type=float, default=1e-4,
+                    help='qat loss gamma. (default: 1e-4.)')
+parser.add_argument('--loss-tao', type=float, default=0.6,
+                    help='qat loss tao. (default: 0.6.)')
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -709,7 +713,8 @@ def train_one_epoch(
         with amp_autocast():
             output = model(input)
             loss = loss_fn(output, target)
-            loss = kqat.kqat_loss(model, loss)
+            qat_loss = kqat.kqat_loss(model, args)
+            loss += qat_loss
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
@@ -739,6 +744,7 @@ def train_one_epoch(
         if last_batch or batch_idx % args.log_interval == 0:
             lrl = [param_group['lr'] for param_group in optimizer.param_groups]
             lr = sum(lrl) / len(lrl)
+            cost_ratio = args.loss_tao + torch.sqrt(qat_loss/args.loss_gamma)
 
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
@@ -748,6 +754,7 @@ def train_one_epoch(
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  '
+                    'Qat_Loss: {qat_loss:>9.6f} ({cost_ratio:>6.4f})  '
                     'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  '
                     '({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  '
                     'LR: {lr:.3e}  '
@@ -756,6 +763,8 @@ def train_one_epoch(
                         batch_idx, len(loader),
                         100. * batch_idx / last_idx,
                         loss=losses_m,
+                        qat_loss=qat_loss,
+                        cost_ratio=cost_ratio,
                         batch_time=batch_time_m,
                         rate=input.size(0) * args.world_size / batch_time_m.val,
                         rate_avg=input.size(0) * args.world_size / batch_time_m.avg,

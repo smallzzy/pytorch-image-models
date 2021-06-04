@@ -284,6 +284,7 @@ parser.add_argument('--loss-gamma', type=float, default=1e-4,
                     help='qat loss gamma. (default: 1e-4.)')
 parser.add_argument('--loss-tao', type=float, default=0.6,
                     help='qat loss tao. (default: 0.6.)')
+parser.add_argument('--loss-method', type=str, default="WeightSize", help='specify WeightSize(default) or CalculationAmount.')
 
 def _parse_args():
     # Do we have a config file to parse?

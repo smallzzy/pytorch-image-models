@@ -709,6 +709,7 @@ def train_one_epoch(
         with amp_autocast():
             output = model(input)
             loss = loss_fn(output, target)
+            loss = kqat.kqat_loss(model, loss)
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))

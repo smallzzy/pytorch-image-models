@@ -1,7 +1,7 @@
 import torch
 import kqat
 
-def get_qconfig(weight_bw, pot, bitwidth_range=[8.,8.,8.], symmetric_clipping=False):
+def get_qconfig(weight_bw, pot, bitwidth_range=[8.], symmetric_clipping=False):
     qmin, qmax = kqat.get_min_max(8)
 
     rcf_act = kqat.KAQ.with_args(

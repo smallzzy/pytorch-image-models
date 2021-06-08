@@ -1,12 +1,14 @@
 import torch
 import kqat
 
-def get_qconfig(weight_bw, pot, bitwidth_range=[8.], symmetric_clipping=False):
+def get_qconfig(weight_bw, pot, bitwidth_range=None, symmetric_clipping=False):
+    if bitwidth_range is None:
+        bitwidth_range = [8.]
     qmin, qmax = kqat.get_min_max(8)
 
     rcf_act = kqat.KAQ.with_args(
         qscheme=torch.per_tensor_symmetric,
-        # qmin=qmin, qmax=qmax,
+        bitwidth_init=weight_bw,
         bitwidth_range=bitwidth_range,
         symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.BN_3STD|kqat.RadixInit.RT_MINMAX,
@@ -16,23 +18,9 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.], symmetric_clipping=False):
         decay=0.98
     )
 
-    # rcf_weight_8bit = kqat.KAQ.with_args(
-    #     qscheme=torch.per_channel_symmetric,
-    #     qmin=qmin, qmax=qmax,
-    #     bitwidth_range=bitwidth_range,
-    #     symmetric_clipping=symmetric_clipping,
-    #     init=kqat.RadixInit.RT_MINMAX,
-    #     threshold=6,
-    #     is_weight=True,
-    #     pot=pot,
-    #     decay=0.98
-    # )
-
-    # qmin, qmax = kqat.get_min_max(weight_bw)
-
     rcf_weight = kqat.KAQ.with_args(
         qscheme=torch.per_channel_symmetric,
-        # qmin=qmin, qmax=qmax,
+        bitwidth_init=weight_bw,
         bitwidth_range=bitwidth_range,
         symmetric_clipping=symmetric_clipping,
         init=kqat.RadixInit.RT_MINMAX,
@@ -46,12 +34,6 @@ def get_qconfig(weight_bw, pot, bitwidth_range=[8.], symmetric_clipping=False):
         activation=rcf_act,
         weight=rcf_weight,
         bias=torch.nn.Identity)
-
-    # qcfg_8bit = kqat.KQConfig(
-    #     activation=rcf_act,
-    #     weight=rcf_weight_8bit,
-    #     bias=torch.nn.Identity)
-
     return qcfg
 
 def attach_qconfig(args, model):

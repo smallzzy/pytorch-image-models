@@ -405,7 +405,7 @@ def main():
         kqat.fuse_model(model, inplace=True)
         timm_mapping = kqat.kneron_qat_default
         timm_mapping[Linear] = kqat.quant.modules.Linear
-        qconfig = get_qconfig(4, True, args.bitwidth_range, args.symmetric_clipping)
+        qconfig = get_qconfig(args.bitwidth, True, args.bitwidth_range, args.symmetric_clipping)
         if args.assignment:
             model.qconfig = qconfig
             kqat.load_qconfig(args.assignment, model, qconfig)

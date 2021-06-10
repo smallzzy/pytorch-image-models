@@ -285,6 +285,8 @@ parser.add_argument('--loss-gamma', type=float, default=1e-4,
 parser.add_argument('--loss-tao', type=float, default=0.6,
                     help='qat loss tao. (default: 0.6.)')
 parser.add_argument('--loss-method', type=str, default="WeightSize", help='specify WeightSize(default) or CalculationAmount.')
+parser.add_argument('--gradient-bias-option', type=str, default="PartialNoise", help='specify PartialNoise(default) or UniformNoise.')
+parser.add_argument('--gradient-start-possibility', type=float, default=0.3, help='gradient bias partial noise start possibility. (default: 0.3, range [0, 1])')
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -316,6 +318,22 @@ def main():
     if args.bitwidth_range[0]<lowerbound or args.bitwidth_range[-1] > 8.0:
         raise Exception("bitwidth range is out of range!")
 
+    if args.gradient_bias_option:
+        if args.gradient_bias_option == 'PartialNoise':
+            if args.gradient_start_possibility:
+                if  args.gradient_start_possibility > 0. and args.gradient_start_possibility < 1.0:
+                    pass
+                else:
+                    raise Exception("Gradient start possibilty is out of range [0, 1]", args.gradient_start_possibility)
+            else:
+                args.gradient_start_possibility = 0.3
+        elif args.gradient_bias_option == 'UniformNoise':
+            pass
+        else:
+            raise Exception("Unknown gradient bias option", args.gradient_bias_option)
+    else:
+        args.gradient_bias_option = "PartialNoise"
+        args.gradient_start_possibility = 1
 
     args.prefetcher = not args.no_prefetcher
     args.distributed = False
@@ -405,7 +423,7 @@ def main():
         kqat.fuse_model(model, inplace=True)
         timm_mapping = kqat.kneron_qat_default
         timm_mapping[Linear] = kqat.quant.modules.Linear
-        qconfig = get_qconfig(args.bitwidth, True, args.bitwidth_range, args.symmetric_clipping)
+        qconfig = get_qconfig(args.bitwidth, True, args.bitwidth_range, args.symmetric_clipping, args.gradient_bias_option, args.gradient_start_possibility)
         if args.assignment:
             model.qconfig = qconfig
             kqat.load_qconfig(args.assignment, model, qconfig)

@@ -470,7 +470,7 @@ def main():
         model = torch.jit.script(model)
 
     if args.qat:
-        fb = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1))
+        fb = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1, gradient_start_possibility=args.gradient_start_possibility))
     else:
         fb = None
 

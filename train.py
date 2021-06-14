@@ -394,10 +394,6 @@ def main():
         _logger.info('Model %s created, param count: %d' %
                      (args.model, sum([m.numel() for m in model.parameters()])))
 
-    x = torch.randn((1, 3, 224, 224))
-    from kqat.trace import ConnectedGraph
-    t = ConnectedGraph(model, x)
-
     data_config = resolve_data_config(vars(args), model=model, verbose=args.local_rank == 0)
 
     # setup augmentation batch splits for contrastive loss or split bn
@@ -419,6 +415,12 @@ def main():
 
 
     if args.qat:
+        # connect graph 
+        sz = [1, *data_config["input_size"]]
+        x = torch.randn(sz).cuda()
+        from kqat.trace import ConnectedGraph
+        t = ConnectedGraph(model, x)
+
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         timm_mapping = kqat.kneron_qat_default

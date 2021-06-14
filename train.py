@@ -712,6 +712,7 @@ def train_one_epoch(
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     losses_m = AverageMeter()
+    ratio_m = AverageMeter()
 
     model.train()
 
@@ -733,12 +734,12 @@ def train_one_epoch(
         with amp_autocast():
             output = model(input)
             loss_orig = loss_fn(output, target)
-            qat_loss = kqat.kqat_loss(model, args)
+            qat_loss, cost_ratio = kqat.kqat_loss(model, args)
             loss = loss_orig + qat_loss
-            # print("Calculate qat_loss==", qat_loss, ".  orig loss=", loss_orig, "total loss=", loss)
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
+            ratio_m.update(cost_ratio.item(), input.size(0))
 
         optimizer.zero_grad()
         if loss_scaler is not None:
@@ -765,17 +766,18 @@ def train_one_epoch(
         if last_batch or batch_idx % args.log_interval == 0:
             lrl = [param_group['lr'] for param_group in optimizer.param_groups]
             lr = sum(lrl) / len(lrl)
-            cost_ratio = args.loss_tao + torch.sqrt(qat_loss/args.loss_gamma)
 
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
-                losses_m.update(reduced_loss.item(), input.size(0))
+                losses_m.update(reduced_loss.item(), input.size(0))                
+                reduced_cost_ratio = reduce_tensor(cost_ratio.data, args.world_size)                
+                ratio_m.update(reduced_cost_ratio.item(), input.size(0))
 
             if args.local_rank == 0:
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  '
-                    'Qat_Loss: {qat_loss:>9.6f} ({cost_ratio:>6.4f})  '
+                    'Ratio: {ratio.val:>9.6f} ({ratio.avg:>6.4f})  '
                     'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  '
                     '({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  '
                     'LR: {lr:.3e}  '
@@ -784,8 +786,7 @@ def train_one_epoch(
                         batch_idx, len(loader),
                         100. * batch_idx / last_idx,
                         loss=losses_m,
-                        qat_loss=qat_loss,
-                        cost_ratio=cost_ratio,
+                        ratio=ratio_m,
                         batch_time=batch_time_m,
                         rate=input.size(0) * args.world_size / batch_time_m.val,
                         rate_avg=input.size(0) * args.world_size / batch_time_m.avg,

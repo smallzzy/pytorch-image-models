@@ -416,8 +416,7 @@ def main():
 
     if args.qat:
         # connect graph 
-        sz = [1, *data_config["input_size"]]
-        x = torch.randn(sz).cuda()
+        x = torch.randn(1, *data_config["input_size"]).cuda()
         from kqat.trace import ConnectedGraph
         t = ConnectedGraph(model, x)
 
@@ -514,7 +513,7 @@ def main():
             load_checkpoint(model_ema.module, args.resume, use_ema=True)
 
     if args.qat:
-        fakeinput = torch.randn(args.batch_size, 3, 224, 224, dtype=torch.float32, device="cuda")
+        fakeinput = torch.randn(args.batch_size, *data_config["input_size"], dtype=torch.float32, device="cuda")
         kqat.initialize(model, fakeinput)
 
     # setup distributed training

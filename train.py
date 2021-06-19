@@ -271,22 +271,7 @@ parser.add_argument('--torchscript', dest='torchscript', action='store_true',
                     help='convert model torchscript for inference')
 
 # kqat part
-parser.add_argument('--qat', action='store_true', default=False)
-parser.add_argument('--bitwidth', type=int, default=8)
-parser.add_argument('--pot', action='store_true', default=False)
-parser.add_argument('--freeze-sch', type=str, default='', help='csv, [edbp][0-9]*')
-parser.add_argument('--lr-qat', type=float, default=0.0001,
-                    help='learning rate for quantization radix (default: 0.0001)')
-parser.add_argument('--assignment', type=str, default='')
-parser.add_argument('--bitwidth-range', nargs='*', default=[8], type=int, help='set the range of bitwidth')
-parser.add_argument('--symmetric-clipping', action='store_true', default=False)
-parser.add_argument('--loss-gamma', type=float, default=1e-4,
-                    help='qat loss gamma. (default: 1e-4.)')
-parser.add_argument('--loss-tao', type=float, default=0.6,
-                    help='qat loss tao. (default: 0.6.)')
-parser.add_argument('--loss-method', type=str, default="WeightSize", help='specify WeightSize(default) or CalculationAmount.')
-parser.add_argument('--gradient-bias-option', type=str, default="PartialNoise", help='specify PartialNoise(default) or UniformNoise.')
-parser.add_argument('--gradient-start-possibility', type=float, default=0.3, help='gradient bias partial noise start possibility. (default: 0.3, range [0, 1])')
+kqat.add_argument(parser)
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -308,32 +293,6 @@ def _parse_args():
 def main():
     setup_default_logging()
     args, args_text = _parse_args()
-
-    args.bitwidth_range = [float(i) for i in list(set(args.bitwidth_range))]
-    args.bitwidth_range = sorted(args.bitwidth_range)
-    if args.symmetric_clipping:
-        lowerbound = 1.0
-    else:
-        lowerbound = 0.0
-    if args.bitwidth_range[0]<lowerbound or args.bitwidth_range[-1] > 8.0:
-        raise Exception("bitwidth range is out of range!")
-
-    if args.gradient_bias_option:
-        if args.gradient_bias_option == 'PartialNoise':
-            if args.gradient_start_possibility:
-                if  args.gradient_start_possibility > 0. and args.gradient_start_possibility < 1.0:
-                    pass
-                else:
-                    raise Exception("Gradient start possibilty is out of range [0, 1]", args.gradient_start_possibility)
-            else:
-                args.gradient_start_possibility = 0.3
-        elif args.gradient_bias_option == 'UniformNoise':
-            pass
-        else:
-            raise Exception("Unknown gradient bias option", args.gradient_bias_option)
-    else:
-        args.gradient_bias_option = "PartialNoise"
-        args.gradient_start_possibility = 1
 
     args.prefetcher = not args.no_prefetcher
     args.distributed = False
@@ -424,7 +383,9 @@ def main():
         kqat.fuse_model(model, inplace=True)
         timm_mapping = kqat.kneron_qat_default
         timm_mapping[Linear] = kqat.quant.modules.Linear
-        qconfig = get_qconfig(args.bitwidth, True, args.bitwidth_range, args.symmetric_clipping, args.gradient_bias_option, args.gradient_start_possibility)
+        qconfig = kqat.get_qconfig(args)        
+        qconfig_8bit = kqat.get_qconfig(args, fixed_bitwidth=True)
+
         if args.assignment:
             model.qconfig = qconfig
             kqat.load_qconfig(args.assignment, model, qconfig)
@@ -437,13 +398,13 @@ def main():
             else:
                 raise NotImplementedError("wrong")
         else:
-            attach_qconfig(args, model)
+            model.qconfig = qconfig
             if "mobilenetv2" in args.model:
-                model.conv_stem.qconfig = qconfig
-                model.classifier.qconfig = qconfig
+                model.conv_stem.qconfig = qconfig_8bit
+                model.classifier.qconfig = qconfig_8bit
                 for n, m in model.named_modules():
                     if 'conv_dw' in n:
-                        m.qconfig = qconfig
+                        m.qconfig = qconfig_8bit
             elif "resnet50" in args.model:
                 pass
             else:
@@ -471,7 +432,7 @@ def main():
         model = torch.jit.script(model)
 
     if args.qat:
-        fb = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1, gradient_start_possibility=args.gradient_start_possibility))
+        fb = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1))
     else:
         fb = None
 

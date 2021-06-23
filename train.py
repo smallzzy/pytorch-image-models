@@ -374,17 +374,12 @@ def main():
 
 
     if args.qat:
-        # connect graph 
-        x = torch.randn(1, *data_config["input_size"]).cuda()
-        from kqat.trace import ConnectedGraph
-        t = ConnectedGraph(model, x)
-
         # fuse model is currently model dependent
         kqat.fuse_model(model, inplace=True)
         timm_mapping = kqat.kneron_qat_default
         timm_mapping[Linear] = kqat.quant.modules.Linear
         qconfig = kqat.get_qconfig(args)        
-        qconfig_8bit = kqat.get_qconfig(args, fixed_bitwidth=True)
+        qconfig_8bit = kqat.get_qconfig(args)
 
         if args.assignment:
             model.qconfig = qconfig

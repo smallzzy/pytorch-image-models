@@ -10,4 +10,4 @@ from .radam import RAdam
 from .rmsprop_tf import RMSpropTF
 from .sgdp import SGDP
 from .adabelief import AdaBelief
-from .optim_factory import create_optimizer, create_optimizer_v2, optimizer_kwargs
+from .optim_factory import create_optimizer, create_optimizer_v2, optimizer_kwargs, create_optimizer_param

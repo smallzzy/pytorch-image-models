@@ -33,9 +33,12 @@ from timm.models import create_model, safe_model_name, resume_checkpoint, load_c
     convert_splitbn_model, model_parameters
 from timm.utils import *
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCrossEntropy
-from timm.optim import create_optimizer_v2, optimizer_kwargs
+from timm.optim import create_optimizer_param, optimizer_kwargs
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
+
+from timm.models.layers import Linear
+import kqat
 
 try:
     from apex import amp
@@ -280,6 +283,8 @@ parser.add_argument('--torchscript', dest='torchscript', action='store_true',
 parser.add_argument('--log-wandb', action='store_true', default=False,
                     help='log training and validation metrics to wandb')
 
+kqat.add_argument(parser)
+
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -381,6 +386,15 @@ def main():
         assert num_aug_splits > 1 or args.resplit
         model = convert_splitbn_model(model, max(num_aug_splits, 2))
 
+    if args.qat:
+        x = torch.randn(1, *data_config["input_size"])
+        timm_mapping = kqat.kqat_default_mapping
+        timm_mapping[Linear] = kqat.quant.modules.Linear
+        kqat.prepare(args, model, x, mapping=timm_mapping)
+        freeze_sch = kqat.FreezeSch(args.freeze_sch, kqat.FreezeKneron(decay=0.1))
+    else:
+        freeze_sch = None
+
     # move model to GPU, enable channels last layout if set
     model.cuda()
     if args.channels_last:
@@ -404,7 +418,16 @@ def main():
         assert not args.sync_bn, 'Cannot use SyncBatchNorm with torchscripted model'
         model = torch.jit.script(model)
 
-    optimizer = create_optimizer_v2(model, **optimizer_kwargs(cfg=args))
+    # todo: check to see if this part can be done in a easier way
+    # optimizer = create_optimizer_v2(model, **optimizer_kwargs(cfg=args))
+    kqat_param, named_param = kqat.split_parameter(model.named_parameters())
+    no_decay, named_param = kqat.split_no_weight_decay(named_param)
+    other = kqat.collect_parameter(named_param)
+    param = [
+        {'params': kqat_param, 'lr': args.lr_qat, 'weight_decay': 0.},
+        {'params': no_decay, 'weight_decay': 0.},
+        {'params': other}]
+    optimizer = create_optimizer_param(param, **optimizer_kwargs(cfg=args))
 
     # setup automatic mixed-precision (AMP) loss scaling and op casting
     amp_autocast = suppress  # do nothing
@@ -580,13 +603,17 @@ def main():
 
     try:
         for epoch in range(start_epoch, num_epochs):
+            if freeze_sch:
+                freeze_sch.trigger(model, epoch)
+
             if args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
                 loader_train.sampler.set_epoch(epoch)
 
             train_metrics = train_one_epoch(
                 epoch, model, loader_train, optimizer, train_loss_fn, args,
                 lr_scheduler=lr_scheduler, saver=saver, output_dir=output_dir,
-                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn)
+                amp_autocast=amp_autocast, loss_scaler=loss_scaler, model_ema=model_ema, mixup_fn=mixup_fn,
+                freeze_sch=freeze_sch)
 
             if args.distributed and args.dist_bn in ('broadcast', 'reduce'):
                 if args.local_rank == 0:
@@ -625,7 +652,7 @@ def main():
 def train_one_epoch(
         epoch, model, loader, optimizer, loss_fn, args,
         lr_scheduler=None, saver=None, output_dir=None, amp_autocast=suppress,
-        loss_scaler=None, model_ema=None, mixup_fn=None):
+        loss_scaler=None, model_ema=None, mixup_fn=None, freeze_sch=None):
 
     if args.mixup_off_epoch and epoch >= args.mixup_off_epoch:
         if args.prefetcher and loader.mixup_enabled:
@@ -720,6 +747,12 @@ def train_one_epoch(
 
         if lr_scheduler is not None:
             lr_scheduler.step_update(num_updates=num_updates, metric=losses_m.avg)
+
+        if freeze_sch:
+            freeze_sch.collect_batch(model, optimizer)
+            # trigger update at some point
+            if batch_idx != 0:
+                freeze_sch.trigger_batch(model, epoch, batch_idx)
 
         end = time.time()
         # end for

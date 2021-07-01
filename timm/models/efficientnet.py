@@ -424,6 +424,9 @@ class EfficientNet(nn.Module):
         self.num_features = num_features
         self.drop_rate = drop_rate
 
+        from torch.quantization import QuantStub
+        self.quant = QuantStub()
+
         # Stem
         if not fix_stem:
             stem_size = round_chs_fn(stem_size)
@@ -464,6 +467,7 @@ class EfficientNet(nn.Module):
             self.num_features, self.num_classes, pool_type=global_pool)
 
     def forward_features(self, x):
+        x = self.quant(x)
         x = self.conv_stem(x)
         x = self.bn1(x)
         x = self.act1(x)

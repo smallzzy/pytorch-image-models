@@ -664,6 +664,8 @@ def train_one_epoch(
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     losses_m = AverageMeter()
+    wt_ratio_m = AverageMeter()
+    act_ratio_m = AverageMeter()
 
     model.train()
 
@@ -680,12 +682,18 @@ def train_one_epoch(
         if args.channels_last:
             input = input.contiguous(memory_format=torch.channels_last)
 
+        if args.qat:
+            kqat.initialize(model, input)
         with amp_autocast():
             output = model(input)
-            loss = loss_fn(output, target)
+            loss_orig = loss_fn(output, target)
+            qat_loss, wt_ratio, act_ratio = kqat.kqat_loss(model, args)
+            loss = loss_orig + qat_loss
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
+            wt_ratio_m.update(wt_ratio.item(), input.size(0))
+            act_ratio_m.update(act_ratio.item(), input.size(0))
 
         optimizer.zero_grad()
         if loss_scaler is not None:
@@ -715,11 +723,17 @@ def train_one_epoch(
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
                 losses_m.update(reduced_loss.item(), input.size(0))
+                reduced_wt_ratio = reduce_tensor(wt_ratio.data, args.world_size)                
+                wt_ratio_m.update(reduced_wt_ratio.item(), input.size(0))
+                reduced_act_ratio = reduce_tensor(act_ratio.data, args.world_size)                
+                act_ratio_m.update(reduced_act_ratio.item(), input.size(0))
 
             if args.local_rank == 0:
                 _logger.info(
                     'Train: {} [{:>4d}/{} ({:>3.0f}%)]  '
                     'Loss: {loss.val:>9.6f} ({loss.avg:>6.4f})  '
+                    'Wt Ratio: {wt_ratio.val:>9.6f} ({wt_ratio.avg:>6.4f})  '
+                    'Act Ratio: {act_ratio.val:>9.6f} ({act_ratio.avg:>6.4f})  '
                     'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s  '
                     '({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s)  '
                     'LR: {lr:.3e}  '
@@ -728,6 +742,8 @@ def train_one_epoch(
                         batch_idx, len(loader),
                         100. * batch_idx / last_idx,
                         loss=losses_m,
+                        wt_ratio=wt_ratio_m,
+                        act_ratio=act_ratio_m,
                         batch_time=batch_time_m,
                         rate=input.size(0) * args.world_size / batch_time_m.val,
                         rate_avg=input.size(0) * args.world_size / batch_time_m.avg,
